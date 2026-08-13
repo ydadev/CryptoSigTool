@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CryptoSigTool</AssemblyName>
+    <RootNamespace>CryptoSigTool</RootNamespace>
+    <Version>1.4.0</Version>
+    <AssemblyVersion>1.4.0.0</AssemblyVersion>
+    <FileVersion>1.4.0.0</FileVersion>
+    <Product>CryptoSigTool</Product>
+    <Company>ydadev</Company>
+    <Authors>ydadev</Authors>
+    <Description>Работа с электронными подписями CMS/PKCS#7 через CryptoPro CSP</Description>
+    <ApplicationIcon>Assets\CryptoSigTool.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="INSTRUCTIONS-RU.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Remove="Assets\CryptoSigTool.ico" />
+    <EmbeddedResource Include="Assets\CryptoSigTool.ico" LogicalName="CryptoSigTool.AppIcon.ico" />
+  </ItemGroup>
+</Project>

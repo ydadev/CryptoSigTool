@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+artifacts/
+dist/
+CryptoSigTool.Installer/Bundle/*
+!CryptoSigTool.Installer/Bundle/.gitkeep
+.vs/
+*.user
+*.suo
+*.pdb
+*.zip
+*.exe
+*.sig
+*.p7s
