@@ -59,5 +59,14 @@ $checksums = @($setupPath, $zipPath) | ForEach-Object {
 }
 [IO.File]::WriteAllLines((Join-Path $dist 'SHA256SUMS.txt'), $checksums, [Text.UTF8Encoding]::new($false))
 
+$releaseBundleDirectory = Join-Path $artifacts 'release-bundle'
+New-Item -ItemType Directory -Path $releaseBundleDirectory -Force | Out-Null
+Copy-Item -LiteralPath $setupPath, $zipPath, (Join-Path $dist 'SHA256SUMS.txt') -Destination $releaseBundleDirectory
+Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\RELEASE_NOTES_1.4.0.md') -Destination $releaseBundleDirectory
+Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\INSTALLATION.md') -Destination $releaseBundleDirectory
+$releaseBundlePath = Join-Path $dist "CryptoSigTool-$Version-Release.zip"
+Compress-Archive -Path (Join-Path $releaseBundleDirectory '*') -DestinationPath $releaseBundlePath -CompressionLevel Optimal
+
 Write-Host "Release artifacts created in $dist"
 Get-ChildItem -LiteralPath $dist | Select-Object Name, Length
+
