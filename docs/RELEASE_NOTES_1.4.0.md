@@ -16,6 +16,7 @@
 
 - `CryptoSigTool-Setup-1.4.0.exe` — рекомендуемый установщик для Windows x64;
 - `CryptoSigTool-1.4.0-win-x64.zip` — переносная автономная версия;
+- `CryptoSigTool-1.4.0-Release.zip` — полный комплект релиза;
 - `SHA256SUMS.txt` — контрольные суммы SHA-256.
 
 ## Требования
