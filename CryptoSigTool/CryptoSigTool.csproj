@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>CryptoSigTool</AssemblyName>
     <RootNamespace>CryptoSigTool</RootNamespace>
-    <Version>1.8.0</Version>
-    <AssemblyVersion>1.8.0.0</AssemblyVersion>
-    <FileVersion>1.8.0.0</FileVersion>
+    <Version>1.8.2</Version>
+    <AssemblyVersion>1.8.2.0</AssemblyVersion>
+    <FileVersion>1.8.2.0</FileVersion>
     <Product>CryptoSigTool</Product>
     <Company>ydadev</Company>
     <Authors>ydadev</Authors>

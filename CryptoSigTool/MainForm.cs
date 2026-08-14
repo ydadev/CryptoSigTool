@@ -53,6 +53,24 @@ internal sealed class MainForm : Form
     private readonly CheckBox _mergeBase64 = new() { Text = "Выход в Base64 (обычно не требуется)" };
     private readonly Button _mergeButton = PrimaryButton("Объединить и проверить");
 
+    private readonly TextBox _appendContent = new();
+    private readonly TextBox _appendExistingSignature = new();
+    private readonly TextBox _appendOutput = new();
+    private readonly ComboBox _appendCertificate = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _appendAlgorithm = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _appendEncoding = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Button _appendSignatureButton = PrimaryButton("Подписать и добавить в .sig");
+    private readonly RichTextBox _appendSignatureDetails = new()
+    {
+        ReadOnly = true,
+        BackColor = Color.FromArgb(248, 250, 252),
+        BorderStyle = BorderStyle.FixedSingle,
+        Font = new Font("Segoe UI", 9.5F),
+        DetectUrls = false,
+        Height = 160,
+        Dock = DockStyle.Fill
+    };
+
     private readonly RadioButton _signFileMode = new() { Text = "Один файл", Checked = true, AutoSize = true };
     private readonly RadioButton _signFolderMode = new() { Text = "Папка", AutoSize = true };
     private readonly TextBox _signInput = new();
@@ -75,6 +93,20 @@ internal sealed class MainForm : Form
         Font = new Font("Segoe UI", 9.5F),
         DetectUrls = false,
         Height = 250,
+        Dock = DockStyle.Fill
+    };
+
+    private readonly TextBox _removePdfSignatureInput = new();
+    private readonly TextBox _removePdfSignatureOutput = new();
+    private readonly Button _removePdfSignaturesButton = DangerButton("Создать неподписанную копию");
+    private readonly RichTextBox _removePdfSignatureDetails = new()
+    {
+        ReadOnly = true,
+        BackColor = Color.FromArgb(248, 250, 252),
+        BorderStyle = BorderStyle.FixedSingle,
+        Font = new Font("Segoe UI", 9.5F),
+        DetectUrls = false,
+        Height = 220,
         Dock = DockStyle.Fill
     };
 
@@ -109,7 +141,7 @@ internal sealed class MainForm : Form
     public MainForm()
     {
         _pdfSigning = new PdfSigningService(_cryptoPro);
-        Text = "CryptoSigTool 1.8.0 — подписи CryptoPro";
+        Text = "CryptoSigTool 1.8.2 — подписи CryptoPro";
         using (var iconStream = typeof(MainForm).Assembly.GetManifestResourceStream("CryptoSigTool.AppIcon.ico"))
         {
             if (iconStream is not null)
@@ -183,8 +215,10 @@ internal sealed class MainForm : Form
         _tabs.TabPages.Add(BuildSignTab());
         _tabs.TabPages.Add(BuildVerifyTab());
         _tabs.TabPages.Add(BuildMergeTab());
+        _tabs.TabPages.Add(BuildAppendSignatureTab());
         _pdfTab = BuildPdfTab();
         _tabs.TabPages.Add(_pdfTab);
+        _tabs.TabPages.Add(BuildPdfSignatureRemovalTab());
         _tabs.TabPages.Add(BuildDisclaimerTab());
         root.Controls.Add(_tabs, 0, 1);
 
@@ -251,6 +285,37 @@ internal sealed class MainForm : Form
         return page;
     }
 
+    private TabPage BuildPdfSignatureRemovalTab()
+    {
+        var page = NewPage("Удалить подписи PDF");
+        var layout = FormGrid();
+        AddPathRow(layout, 0, "Подписанный PDF", _removePdfSignatureInput, BrowsePdfForSignatureRemoval);
+        AddPathRow(layout, 1, "Неподписанная копия", _removePdfSignatureOutput,
+            () => PickSaveFile(_removePdfSignatureOutput, "PDF (*.pdf)|*.pdf"));
+
+        var warning = Info(
+            "Будет создан новый PDF без встроенных полей электронной подписи и их видимых штампов. " +
+            "Исходный файл не изменяется. Новая копия не является побайтным восстановлением первоначального оригинала, " +
+            "а ранее установленные подписи в ней отсутствуют. Сохраните подписанный исходник для подтверждения истории документа.");
+        warning.ForeColor = Color.Firebrick;
+        warning.MaximumSize = new Size(850, 0);
+        layout.Controls.Add(warning, 1, 2);
+        layout.SetColumnSpan(warning, 2);
+
+        layout.Controls.Add(new Label
+        {
+            Text = "Найденные подписи",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top,
+            Margin = new Padding(3, 12, 3, 3)
+        }, 0, 3);
+        layout.Controls.Add(_removePdfSignatureDetails, 1, 3);
+        layout.SetColumnSpan(_removePdfSignatureDetails, 2);
+        layout.Controls.Add(_removePdfSignaturesButton, 1, 4);
+        page.Controls.Add(layout);
+        return page;
+    }
+
     private TabPage BuildMergeTab()
     {
         var page = NewPage("Объединить .sig");
@@ -264,6 +329,52 @@ internal sealed class MainForm : Form
         layout.Controls.Add(Info("Обе исходные подписи сначала проверяются на выбранном файле. Итоговый контейнер содержит обоих подписантов и также проверяется CryptoPro."), 1, 5);
         layout.SetColumnSpan(layout.GetControlFromPosition(1, 5)!, 2);
         layout.Controls.Add(_mergeButton, 1, 6);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private TabPage BuildAppendSignatureTab()
+    {
+        var page = NewPage("Добавить");
+        var layout = FormGrid();
+        AddPathRow(layout, 0, "Исходный PDF", _appendContent, BrowseAppendContent);
+        AddPathRow(layout, 1, "Полученная подпись", _appendExistingSignature, BrowseExistingSignatureForAppend);
+        AddPathRow(layout, 2, "Итоговый .sig", _appendOutput,
+            () => PickSaveFile(_appendOutput, "SIG (*.sig)|*.sig"));
+
+        var certificateRow = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2 };
+        certificateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        certificateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _appendCertificate.Dock = DockStyle.Fill;
+        certificateRow.Controls.Add(_appendCertificate, 0, 0);
+        var refresh = SecondaryButton("Обновить");
+        refresh.Click += (_, _) => RefreshCertificates();
+        certificateRow.Controls.Add(refresh, 1, 0);
+        AddControlRow(layout, 3, "Ваш сертификат", certificateRow);
+
+        _appendAlgorithm.Items.AddRange(new object[] { "GOST12_256", "GOST12_512", "GOST94_256", "SHA1" });
+        _appendAlgorithm.SelectedIndex = 0;
+        AddControlRow(layout, 4, "Алгоритм хеша", _appendAlgorithm);
+
+        _appendEncoding.Items.AddRange(new object[] { "DER (двоичный, рекомендуется)", "Base64 (текстовый)" });
+        _appendEncoding.SelectedIndex = 0;
+        AddControlRow(layout, 5, "Формат результата", _appendEncoding);
+
+        layout.Controls.Add(new Label
+        {
+            Text = "Подписанты в полученном .sig",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top,
+            Margin = new Padding(3, 12, 3, 3)
+        }, 0, 6);
+        layout.Controls.Add(_appendSignatureDetails, 1, 6);
+        layout.SetColumnSpan(_appendSignatureDetails, 2);
+        var note = Info(
+            "Программа проверит полученный .sig на выбранном PDF, создаст вашу отсоединённую подпись через CryptoPro, " +
+            "добавит её в тот же CMS-контейнер и проверит итог. Исходные PDF и .sig не изменяются.");
+        layout.Controls.Add(note, 1, 7);
+        layout.SetColumnSpan(note, 2);
+        layout.Controls.Add(_appendSignatureButton, 1, 8);
         page.Controls.Add(layout);
         return page;
     }
@@ -539,8 +650,10 @@ internal sealed class MainForm : Form
         _refreshRemovableCertificatesButton.Click += (_, _) => RefreshRemovableCertificates();
         _removeCertificatesButton.Click += async (_, _) => await RemoveSelectedCertificatesAsync();
         _mergeButton.Click += async (_, _) => await MergeAsync();
+        _appendSignatureButton.Click += async (_, _) => await AppendSignatureAsync();
         _signButton.Click += async (_, _) => await SignAsync();
         _verifyButton.Click += async (_, _) => await VerifyAsync();
+        _removePdfSignaturesButton.Click += async (_, _) => await RemovePdfSignaturesAsync();
         _pdfOpenButton.Click += async (_, _) => await OpenPdfAsync();
         _pdfPreviousButton.Click += async (_, _) => await ChangePdfPageAsync(-1);
         _pdfNextButton.Click += async (_, _) => await ChangePdfPageAsync(1);
@@ -579,6 +692,133 @@ internal sealed class MainForm : Form
                 BeginInvoke(() => MessageBox.Show(this, "Можно выбрать не более двух сертификатов.", "CryptoSigTool", MessageBoxButtons.OK, MessageBoxIcon.Information));
             }
         };
+    }
+
+    private void BrowsePdfForSignatureRemoval()
+    {
+        using var dialog = new OpenFileDialog { Filter = "PDF (*.pdf)|*.pdf", CheckFileExists = true };
+        if (File.Exists(_removePdfSignatureInput.Text)) dialog.FileName = _removePdfSignatureInput.Text;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _removePdfSignatureInput.Text = dialog.FileName;
+        _removePdfSignatureOutput.Text = GetAvailablePath(Path.Combine(
+            Path.GetDirectoryName(dialog.FileName)!,
+            Path.GetFileNameWithoutExtension(dialog.FileName) + ".unsigned.pdf"));
+        RefreshPdfSignatureRemovalPreview();
+    }
+
+    private void RefreshPdfSignatureRemovalPreview()
+    {
+        _removePdfSignatureDetails.Clear();
+        var input = _removePdfSignatureInput.Text.Trim();
+        if (!File.Exists(input)) return;
+
+        try
+        {
+            var inspection = PdfSignatureRemovalService.Inspect(input);
+            _removePdfSignatureDetails.Text = FormatPdfSignatureRemovalInspection(inspection);
+            var color = inspection.Signatures.Count == 0 ? Color.Firebrick : Color.FromArgb(23, 121, 78);
+            SetStatus($"Встроенных подписей в PDF: {inspection.Signatures.Count}", color);
+        }
+        catch (Exception ex)
+        {
+            _removePdfSignatureDetails.Text = "Не удалось прочитать PDF:\r\n" + ex.Message;
+            SetStatus("Не удалось проверить поля подписи PDF", Color.Firebrick);
+        }
+    }
+
+    private static string FormatPdfSignatureRemovalInspection(PdfSignatureRemovalInspection inspection)
+    {
+        if (inspection.Signatures.Count == 0)
+            return $"Страниц: {inspection.PageCount}\r\nВстроенные поля электронной подписи не обнаружены.";
+
+        var lines = new List<string>
+        {
+            $"Страниц: {inspection.PageCount}",
+            $"Встроенных подписей: {inspection.Signatures.Count}",
+            ""
+        };
+        for (var index = 0; index < inspection.Signatures.Count; index++)
+        {
+            var signature = inspection.Signatures[index];
+            var page = signature.PageNumber is null ? "страница не указана" : $"страница {signature.PageNumber}";
+            lines.Add($"{index + 1}. {signature.FieldName} — {page}");
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private async Task RemovePdfSignaturesAsync()
+    {
+        if (_busy) return;
+        var input = _removePdfSignatureInput.Text.Trim();
+        if (!File.Exists(input))
+        {
+            ShowError("Выберите существующий подписанный PDF-файл.");
+            return;
+        }
+
+        PdfSignatureRemovalInspection inspection;
+        try
+        {
+            inspection = PdfSignatureRemovalService.Inspect(input);
+        }
+        catch (Exception ex)
+        {
+            ShowError("Не удалось прочитать PDF:\r\n\r\n" + ex.Message);
+            return;
+        }
+        if (inspection.Signatures.Count == 0)
+        {
+            ShowError("В PDF не обнаружены встроенные поля электронной подписи.");
+            return;
+        }
+
+        var output = _removePdfSignatureOutput.Text.Trim();
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            output = GetAvailablePath(Path.Combine(
+                Path.GetDirectoryName(input)!,
+                Path.GetFileNameWithoutExtension(input) + ".unsigned.pdf"));
+            _removePdfSignatureOutput.Text = output;
+        }
+        if (string.Equals(Path.GetFullPath(input), Path.GetFullPath(output), StringComparison.OrdinalIgnoreCase))
+        {
+            ShowError("Исходный PDF и неподписанная копия должны быть разными файлами.");
+            return;
+        }
+
+        var overwriteText = File.Exists(output)
+            ? "\r\n\r\nВнимание: существующий выходной файл будет заменён."
+            : "";
+        var answer = MessageBox.Show(this,
+            $"Создать новую неподписанную копию и удалить из неё встроенные подписи и их видимые штампы ({inspection.Signatures.Count})?\r\n\r\n" +
+            $"Исходник останется без изменений:\r\n{input}\r\n\r\nРезультат:\r\n{output}" + overwriteText +
+            "\r\n\r\nОперация не восстанавливает первоначальный PDF побайтно. Сохраните подписанный исходник для истории.",
+            "Подтверждение удаления подписей из копии",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+        if (answer != DialogResult.Yes) return;
+
+        await RunBusyAsync(async () =>
+        {
+            Log($"Создание неподписанной копии PDF: {input}");
+            var result = await Task.Run(() => PdfSignatureRemovalService.RemoveAll(input, output));
+            var verification = await Task.Run(() => PdfSignatureRemovalService.Inspect(output));
+            if (verification.Signatures.Count != 0)
+                throw new InvalidDataException("Проверка результата обнаружила оставшиеся поля подписи.");
+
+            _removePdfSignatureDetails.Text =
+                $"Готово. Удалено встроенных подписей: {result.RemovedSignatures}\r\n" +
+                $"Страниц сохранено: {result.PageCount}\r\n" +
+                $"Размер результата: {result.OutputBytes:N0} байт\r\n\r\n" +
+                $"Неподписанная копия:\r\n{output}";
+            SetStatus($"Готово: создана неподписанная копия, удалено подписей — {result.RemovedSignatures}", Color.FromArgb(23, 121, 78));
+            Log($"Создана неподписанная копия: {output}; удалено подписей: {result.RemovedSignatures}; страниц: {result.PageCount}.");
+            MessageBox.Show(this,
+                $"Неподписанная копия сохранена:\r\n{output}\r\n\r\nУдалено встроенных подписей и штампов: {result.RemovedSignatures}.\r\nИсходный PDF не изменён.",
+                "CryptoSigTool", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        });
     }
 
     private async Task OpenPdfAsync()
@@ -883,6 +1123,152 @@ internal sealed class MainForm : Form
         });
     }
 
+    private void BrowseAppendContent()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "PDF (*.pdf)|*.pdf|Все файлы|*.*",
+            CheckFileExists = true
+        };
+        if (File.Exists(_appendContent.Text)) dialog.FileName = _appendContent.Text;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        _appendContent.Text = dialog.FileName;
+        _appendOutput.Text = GetAvailablePath(Path.Combine(
+            Path.GetDirectoryName(dialog.FileName)!,
+            Path.GetFileName(dialog.FileName) + ".2signers.sig"));
+    }
+
+    private void BrowseExistingSignatureForAppend()
+    {
+        using var dialog = new OpenFileDialog { Filter = SignatureFilter, CheckFileExists = true };
+        if (File.Exists(_appendExistingSignature.Text)) dialog.FileName = _appendExistingSignature.Text;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        _appendExistingSignature.Text = dialog.FileName;
+
+        try
+        {
+            var inspection = CmsMerger.Inspect(dialog.FileName);
+            _appendSignatureDetails.Text = FormatAppendSignaturePreview(dialog.FileName, inspection);
+            SetStatus($"Полученный .sig прочитан: подписантов {inspection.Signers.Count}", Color.FromArgb(23, 121, 78));
+        }
+        catch (Exception ex)
+        {
+            _appendSignatureDetails.Text = "Не удалось прочитать подпись:\r\n" + ex.Message;
+            SetStatus("Не удалось прочитать полученный .sig", Color.Firebrick);
+        }
+    }
+
+    private static string FormatAppendSignaturePreview(string path, SignatureInspection inspection)
+    {
+        var lines = new List<string>
+        {
+            $"Тип: {(inspection.Detached ? "отсоединённая подпись" : "вложенная CMS/PKCS#7")}",
+            $"Формат: {(CmsMerger.IsBase64File(path) ? "Base64" : "DER")}",
+            $"Подписантов: {inspection.Signers.Count}",
+            ""
+        };
+        foreach (var signer in inspection.Signers)
+            lines.Add($"{signer.Number}. {signer.DisplayName} — {signer.DigestAlgorithm}");
+        lines.Add(inspection.Detached
+            ? "\r\nКриптографическая проверка на выбранном PDF будет выполнена перед добавлением."
+            : "\r\nДля этой операции требуется отсоединённая подпись .sig.");
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private async Task AppendSignatureAsync()
+    {
+        if (_busy) return;
+        var content = _appendContent.Text.Trim();
+        var existingSignature = _appendExistingSignature.Text.Trim();
+        if (!RequireFiles(content, existingSignature)) return;
+        if (_appendCertificate.SelectedItem is not CertificateItem certificate)
+        {
+            ShowError("Выберите свой сертификат.");
+            return;
+        }
+        if (!certificate.HasPrivateKey)
+        {
+            ShowError("У выбранного сертификата нет доступного закрытого ключа.");
+            return;
+        }
+
+        SignatureInspection existingInspection;
+        try
+        {
+            existingInspection = CmsMerger.Inspect(existingSignature);
+        }
+        catch (Exception ex)
+        {
+            ShowError("Не удалось прочитать полученный .sig:\r\n\r\n" + ex.Message);
+            return;
+        }
+        if (!existingInspection.Detached)
+        {
+            ShowError("Полученная подпись должна быть отсоединённой .sig. Вложенную CMS/PKCS#7 добавить к PDF этим способом нельзя.");
+            return;
+        }
+        if (existingInspection.Signers.Any(signer =>
+                string.Equals(signer.Thumbprint?.Replace(" ", ""), certificate.Thumbprint.Replace(" ", ""), StringComparison.OrdinalIgnoreCase)))
+        {
+            ShowError("Выбранный сертификат уже присутствует среди подписантов полученного .sig.");
+            return;
+        }
+
+        var output = _appendOutput.Text.Trim();
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            output = Path.Combine(
+                Path.GetDirectoryName(content)!,
+                Path.GetFileName(content) + ".2signers.sig");
+        }
+        output = GetAvailablePath(output);
+        _appendOutput.Text = output;
+        var algorithm = _appendAlgorithm.SelectedItem?.ToString() ?? "GOST12_256";
+        var base64 = _appendEncoding.SelectedIndex == 1;
+
+        await RunBusyAsync(async () =>
+        {
+            EnsureCryptoPro();
+            Log("Проверка полученной подписи на выбранном PDF...");
+            EnsureSuccess(await _cryptoPro.VerifyDetachedAsync(content, existingSignature),
+                "Полученная подпись не прошла проверку на выбранном PDF");
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "CryptoSigTool", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                var ownSignature = Path.Combine(tempDir, "own.sig");
+                var mergedSignature = Path.Combine(tempDir, "merged.sig");
+                Log($"Создание вашей подписи: {certificate.DisplayName}");
+                EnsureSuccess(await _cryptoPro.SignAsync(content, ownSignature, certificate, algorithm, true, false),
+                    "Не удалось создать вашу отсоединённую подпись");
+                EnsureSuccess(await _cryptoPro.VerifyDetachedAsync(content, ownSignature),
+                    "Созданная вами подпись не прошла проверку");
+
+                var merged = CmsMerger.Merge(new[] { existingSignature, ownSignature }, mergedSignature, base64);
+                var expectedSigners = existingInspection.Signers.Count + 1;
+                if (!merged.Detached || merged.Signers != expectedSigners)
+                    throw new InvalidDataException($"Ожидалось подписантов: {expectedSigners}; получено: {merged.Signers}.");
+                EnsureSuccess(await _cryptoPro.VerifyDetachedAsync(content, mergedSignature),
+                    "Итоговый .sig не прошёл проверку");
+
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
+                File.Move(mergedSignature, output, false);
+                var finalInspection = CmsMerger.Inspect(output);
+                _appendSignatureDetails.Text = FormatInspection(finalInspection);
+                SetStatus($"Готово: итоговый .sig содержит подписантов — {finalInspection.Signers.Count}", Color.FromArgb(23, 121, 78));
+                Log($"Создан и проверен итоговый .sig: {output}; подписантов: {finalInspection.Signers.Count}.");
+                MessageBox.Show(this,
+                    $"Итоговая подпись сохранена:\r\n{output}\r\n\r\nПодписантов: {finalInspection.Signers.Count}.\r\nИсходные PDF и .sig не изменены.",
+                    "CryptoSigTool", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            finally
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        });
+    }
+
     private async Task MergeAsync()
     {
         if (_busy) return;
@@ -1127,18 +1513,26 @@ internal sealed class MainForm : Form
     private void RefreshCertificates()
     {
         var selectedPdfThumbprint = (_pdfCertificates.SelectedItem as CertificateItem)?.Thumbprint;
+        var selectedAppendThumbprint = (_appendCertificate.SelectedItem as CertificateItem)?.Thumbprint;
         _certificates.Items.Clear();
         _pdfCertificates.Items.Clear();
+        _appendCertificate.Items.Clear();
         var certificates = _cryptoPro.GetCertificates();
         foreach (var cert in certificates)
         {
             _certificates.Items.Add(cert);
             _pdfCertificates.Items.Add(cert);
+            _appendCertificate.Items.Add(cert);
         }
         if (_pdfCertificates.Items.Count > 0)
         {
             var selectedIndex = certificates.FindIndex(x => string.Equals(x.Thumbprint, selectedPdfThumbprint, StringComparison.OrdinalIgnoreCase));
             _pdfCertificates.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+        if (_appendCertificate.Items.Count > 0)
+        {
+            var selectedIndex = certificates.FindIndex(x => string.Equals(x.Thumbprint, selectedAppendThumbprint, StringComparison.OrdinalIgnoreCase));
+            _appendCertificate.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
         }
         Log($"Найдено сертификатов в хранилищах Windows: {certificates.Count}; с закрытым ключом: {certificates.Count(x => x.HasPrivateKey)}.");
     }
@@ -1197,8 +1591,10 @@ internal sealed class MainForm : Form
         _refreshRemovableCertificatesButton.Enabled = enabled;
         _removeCertificatesButton.Enabled = enabled;
         _mergeButton.Enabled = enabled;
+        _appendSignatureButton.Enabled = enabled;
         _signButton.Enabled = enabled;
         _verifyButton.Enabled = enabled;
+        _removePdfSignaturesButton.Enabled = enabled;
         _pdfOpenButton.Enabled = enabled;
         _pdfSignButton.Enabled = enabled;
         _pdfZoomInButton.Enabled = enabled;
