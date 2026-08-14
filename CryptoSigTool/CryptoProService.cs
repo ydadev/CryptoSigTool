@@ -105,6 +105,48 @@ internal sealed class CryptoProService
     public bool IsCurrentUserCertificateInstalled(string thumbprint) =>
         GetCurrentUserThumbprints().Contains(thumbprint);
 
+    public List<UserPersonalCertificateItem> GetCurrentUserPersonalCertificates()
+    {
+        using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+        store.Open(OpenFlags.ReadOnly | OpenFlags.OpenExistingOnly);
+        return store.Certificates
+            .Cast<X509Certificate2>()
+            .Select(certificate =>
+            {
+                var name = certificate.GetNameInfo(X509NameType.SimpleName, false);
+                if (string.IsNullOrWhiteSpace(name)) name = certificate.Subject;
+                return new UserPersonalCertificateItem(
+                    name,
+                    certificate.Thumbprint,
+                    certificate.NotBefore,
+                    certificate.NotAfter,
+                    certificate.Subject,
+                    certificate.Issuer,
+                    certificate.HasPrivateKey);
+            })
+            .GroupBy(certificate => certificate.Thumbprint, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(certificate => certificate.IsExpired ? 0 : certificate.IsNotYetValid ? 1 : 2)
+            .ThenBy(certificate => certificate.NotAfter)
+            .ThenBy(certificate => certificate.DisplayName)
+            .ToList();
+    }
+
+    public int RemoveCurrentUserPersonalCertificate(string thumbprint)
+    {
+        if (string.IsNullOrWhiteSpace(thumbprint))
+            throw new ArgumentException("Не указан отпечаток сертификата.", nameof(thumbprint));
+
+        using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+        store.Open(OpenFlags.ReadWrite | OpenFlags.OpenExistingOnly);
+        var matches = store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, false)
+            .Cast<X509Certificate2>()
+            .ToArray();
+        foreach (var certificate in matches)
+            store.Remove(certificate);
+        return matches.Length;
+    }
+
     public List<CertificateItem> GetCertificates()
     {
         var result = new List<CertificateItem>();

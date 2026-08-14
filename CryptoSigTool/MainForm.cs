@@ -6,9 +6,15 @@ namespace CryptoSigTool;
 internal sealed class MainForm : Form
 {
     private readonly CryptoProService _cryptoPro = new();
+    private readonly PdfViewerService _pdfViewer = new();
+    private readonly PdfSigningService _pdfSigning;
     private readonly Label _statusLabel = new();
     private readonly RichTextBox _log = new();
     private readonly TabControl _tabs = new();
+    private TableLayoutPanel? _rootLayout;
+    private Control? _headerPanel;
+    private TabPage? _pdfTab;
+    private TabPage? _removeCertificateTab;
 
     private readonly ListView _containerCertificates = new()
     {
@@ -24,6 +30,21 @@ internal sealed class MainForm : Form
     private readonly Label _containerStatus = new() { AutoSize = true, ForeColor = Color.FromArgb(86, 99, 117) };
     private readonly Button _scanContainersButton = SecondaryButton("Обновить список");
     private readonly Button _installCertificatesButton = PrimaryButton("Добавить выбранные");
+
+    private readonly ListView _removableCertificates = new()
+    {
+        View = View.Details,
+        CheckBoxes = true,
+        FullRowSelect = true,
+        GridLines = true,
+        HideSelection = false,
+        ShowItemToolTips = true,
+        Dock = DockStyle.Fill,
+        Height = 300
+    };
+    private readonly Label _removableCertificateStatus = new() { AutoSize = true, ForeColor = Color.FromArgb(86, 99, 117) };
+    private readonly Button _refreshRemovableCertificatesButton = SecondaryButton("Обновить список");
+    private readonly Button _removeCertificatesButton = DangerButton("Удалить выбранные");
 
     private readonly TextBox _mergeContent = new();
     private readonly TextBox _mergeSig1 = new();
@@ -57,11 +78,38 @@ internal sealed class MainForm : Form
         Dock = DockStyle.Fill
     };
 
+    private readonly PdfPageCanvas _pdfCanvas = new();
+    private readonly TextBox _pdfInput = new();
+    private readonly TextBox _pdfOutput = new();
+    private readonly ComboBox _pdfCertificates = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _pdfAlgorithm = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _pdfStampDesign = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly CheckBox _pdfVisualize63Fz = new() { Text = "Визуализация в соответствии с 63-ФЗ", Checked = true, AutoSize = true };
+    private readonly CheckBox _pdfShowDate = new() { Text = "Добавить дату и время в штамп", Checked = false, AutoSize = true };
+    private readonly CheckBox _pdfTimestamp = new() { Text = "Добавить штамп времени TSP (CAdES-T)", AutoSize = true };
+    private readonly CheckBox _pdfEvidence = new() { Text = "Добавить доказательства подлинности (CAdES-XLT1)", AutoSize = true };
+    private readonly ComboBox _pdfTspAddress = new() { DropDownStyle = ComboBoxStyle.DropDown };
+    private readonly TextBox _pdfLogo = new();
+    private readonly TextBox _pdfReason = new() { Text = "Подписание документа" };
+    private readonly TextBox _pdfLocation = new();
+    private readonly Label _pdfPageLabel = new() { AutoSize = true, Text = "Страница — / —", Margin = new Padding(8, 8, 8, 3) };
+    private readonly Label _pdfSelectionLabel = new() { AutoSize = true, ForeColor = Color.FromArgb(86, 99, 117), MaximumSize = new Size(350, 0) };
+    private readonly Label _pdfFeatureStatus = new() { AutoSize = true, MaximumSize = new Size(350, 0) };
+    private readonly Button _pdfOpenButton = SecondaryButton("Открыть PDF...");
+    private readonly Button _pdfPreviousButton = SecondaryButton("◀");
+    private readonly Button _pdfNextButton = SecondaryButton("▶");
+    private readonly Button _pdfZoomOutButton = SecondaryButton("−");
+    private readonly Button _pdfZoomInButton = SecondaryButton("+");
+    private readonly Button _pdfFitButton = SecondaryButton("По размеру окна");
+    private readonly Button _pdfSignButton = PrimaryButton("Подписать PDF");
+    private uint _pdfPageIndex;
+
     private bool _busy;
 
     public MainForm()
     {
-        Text = "CryptoSigTool 1.4 — подписи CryptoPro";
+        _pdfSigning = new PdfSigningService(_cryptoPro);
+        Text = "CryptoSigTool 1.8.0 — подписи CryptoPro";
         using (var iconStream = typeof(MainForm).Assembly.GetManifestResourceStream("CryptoSigTool.AppIcon.ico"))
         {
             if (iconStream is not null)
@@ -72,6 +120,7 @@ internal sealed class MainForm : Form
         }
         MinimumSize = new Size(850, 680);
         Size = new Size(980, 790);
+        WindowState = FormWindowState.Maximized;
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 10F);
         BackColor = Color.FromArgb(245, 247, 250);
@@ -80,6 +129,7 @@ internal sealed class MainForm : Form
         BuildUi();
         WireEvents();
         RefreshCertificates();
+        RefreshRemovableCertificates();
         Shown += async (_, _) => await RefreshContainerCertificatesAsync();
 
         var status = _cryptoPro.IsInstalled
@@ -90,6 +140,7 @@ internal sealed class MainForm : Form
     }
 
     internal string TabOrderForTest => string.Join(" | ", _tabs.TabPages.Cast<TabPage>().Select(x => x.Text));
+    internal bool PdfShowDateDefaultForTest => _pdfShowDate.Checked;
 
     private void BuildUi()
     {
@@ -101,12 +152,14 @@ internal sealed class MainForm : Form
             Padding = new Padding(16),
             BackColor = BackColor
         };
+        _rootLayout = root;
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 65));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
 
         var header = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(0, 0, 0, 10) };
+        _headerPanel = header;
         header.Controls.Add(new Label
         {
             Text = "CryptoSigTool",
@@ -125,9 +178,14 @@ internal sealed class MainForm : Form
         _tabs.Dock = DockStyle.Fill;
         _tabs.Padding = new Point(18, 8);
         _tabs.TabPages.Add(BuildCertificateTab());
+        _removeCertificateTab = BuildRemoveCertificateTab();
+        _tabs.TabPages.Add(_removeCertificateTab);
         _tabs.TabPages.Add(BuildSignTab());
         _tabs.TabPages.Add(BuildVerifyTab());
         _tabs.TabPages.Add(BuildMergeTab());
+        _pdfTab = BuildPdfTab();
+        _tabs.TabPages.Add(_pdfTab);
+        _tabs.TabPages.Add(BuildDisclaimerTab());
         root.Controls.Add(_tabs, 0, 1);
 
         _statusLabel.AutoSize = true;
@@ -146,6 +204,53 @@ internal sealed class MainForm : Form
         Controls.Add(root);
     }
 
+    private TabPage BuildDisclaimerTab()
+    {
+        var page = NewPage("Дисклеймер");
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(24),
+            BackColor = Color.White
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(new Label
+        {
+            Text = DisclaimerContent.Title,
+            AutoSize = true,
+            Font = new Font("Segoe UI Semibold", 18F),
+            ForeColor = Color.FromArgb(27, 42, 65),
+            Margin = new Padding(0, 0, 0, 16)
+        }, 0, 0);
+        layout.Controls.Add(new RichTextBox
+        {
+            Text = DisclaimerContent.Text,
+            ReadOnly = true,
+            Dock = DockStyle.Fill,
+            BorderStyle = BorderStyle.None,
+            BackColor = Color.White,
+            ForeColor = Color.FromArgb(45, 55, 72),
+            Font = new Font("Segoe UI", 11F),
+            DetectUrls = false,
+            TabStop = false
+        }, 0, 1);
+        var repositoryLink = new LinkLabel
+        {
+            Text = "Документация и исходный код: github.com/ydadev/CryptoSigTool",
+            AutoSize = true,
+            Margin = new Padding(0, 16, 0, 0)
+        };
+        repositoryLink.LinkClicked += (_, _) => Process.Start(new ProcessStartInfo(
+            "https://github.com/ydadev/CryptoSigTool") { UseShellExecute = true });
+        layout.Controls.Add(repositoryLink, 0, 2);
+        page.Controls.Add(layout);
+        return page;
+    }
+
     private TabPage BuildMergeTab()
     {
         var page = NewPage("Объединить .sig");
@@ -160,6 +265,145 @@ internal sealed class MainForm : Form
         layout.SetColumnSpan(layout.GetControlFromPosition(1, 5)!, 2);
         layout.Controls.Add(_mergeButton, 1, 6);
         page.Controls.Add(layout);
+        return page;
+    }
+
+    private TabPage BuildPdfTab()
+    {
+        var page = NewPage("PDF 63-ФЗ");
+        page.Padding = new Padding(0);
+        page.AutoScroll = false;
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = Color.FromArgb(245, 247, 250) };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var toolbar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            Padding = new Padding(8, 5, 8, 5),
+            BackColor = Color.White,
+            WrapContents = false
+        };
+        toolbar.Controls.AddRange(new Control[]
+        {
+            _pdfOpenButton, _pdfPreviousButton, _pdfNextButton, _pdfPageLabel,
+            _pdfZoomOutButton, _pdfZoomInButton, _pdfFitButton
+        });
+        _pdfPreviousButton.Enabled = false;
+        _pdfNextButton.Enabled = false;
+        root.Controls.Add(toolbar, 0, 0);
+
+        var split = new SplitContainer
+        {
+            Size = new Size(1200, 700),
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Vertical,
+            FixedPanel = FixedPanel.Panel2,
+            Panel2MinSize = 360,
+            SplitterWidth = 5,
+            SplitterDistance = 800
+        };
+        split.Panel1.Controls.Add(_pdfCanvas);
+
+        var sideScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White, Padding = new Padding(14) };
+        var side = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 1 };
+        side.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var row = 0;
+
+        void AddControl(Control control, int top = 5)
+        {
+            control.Dock = DockStyle.Top;
+            control.Margin = new Padding(0, top, 0, 4);
+            side.Controls.Add(control, 0, row++);
+        }
+
+        void AddCaption(string text)
+        {
+            AddControl(new Label
+            {
+                Text = text,
+                AutoSize = true,
+                Font = new Font("Segoe UI Semibold", 10F),
+                ForeColor = Color.FromArgb(27, 42, 65)
+            }, row == 0 ? 0 : 12);
+        }
+
+        void AddLabeled(string label, Control control)
+        {
+            AddControl(new Label { Text = label, AutoSize = true, ForeColor = Color.FromArgb(86, 99, 117) }, 6);
+            AddControl(control, 0);
+        }
+
+        AddCaption("Документ");
+        _pdfInput.ReadOnly = true;
+        AddLabeled("Исходный PDF", _pdfInput);
+        var outputRow = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2 };
+        outputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        outputRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _pdfOutput.Dock = DockStyle.Fill;
+        outputRow.Controls.Add(_pdfOutput, 0, 0);
+        var outputBrowse = SecondaryButton("Обзор...");
+        outputBrowse.Click += (_, _) => PickSaveFile(_pdfOutput, "PDF (*.pdf)|*.pdf");
+        outputRow.Controls.Add(outputBrowse, 1, 0);
+        AddLabeled("Подписанная копия", outputRow);
+
+        AddCaption("Подпись");
+        var certificateRow = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2 };
+        certificateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        certificateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _pdfCertificates.Dock = DockStyle.Fill;
+        certificateRow.Controls.Add(_pdfCertificates, 0, 0);
+        var refreshCertificates = SecondaryButton("↻");
+        refreshCertificates.Click += (_, _) => RefreshCertificates();
+        certificateRow.Controls.Add(refreshCertificates, 1, 0);
+        AddLabeled("Сертификат", certificateRow);
+
+        _pdfAlgorithm.Items.AddRange(new object[] { "GOST12_256", "GOST12_512", "GOST94_256" });
+        _pdfAlgorithm.SelectedIndex = 0;
+        AddLabeled("Алгоритм", _pdfAlgorithm);
+        AddControl(_pdfVisualize63Fz, 8);
+        _pdfStampDesign.Items.AddRange(PdfStampDesignCatalog.Items.Cast<object>().ToArray());
+        _pdfStampDesign.SelectedIndex = 0;
+        AddLabeled("Дизайн штампа", _pdfStampDesign);
+        AddControl(_pdfShowDate, 0);
+        AddControl(_pdfSelectionLabel, 3);
+
+        var logoRow = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2 };
+        logoRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        logoRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _pdfLogo.Dock = DockStyle.Fill;
+        logoRow.Controls.Add(_pdfLogo, 0, 0);
+        var logoBrowse = SecondaryButton("Обзор...");
+        logoBrowse.Click += (_, _) => PickOpenFile(_pdfLogo, "Изображения (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png|Все файлы|*.*");
+        logoRow.Controls.Add(logoBrowse, 1, 0);
+        AddLabeled("Логотип (необязательно)", logoRow);
+        AddLabeled("Причина подписания", _pdfReason);
+        AddLabeled("Место подписания", _pdfLocation);
+
+        AddCaption("Доверенное время и доказательства");
+        AddControl(_pdfTimestamp, 5);
+        AddControl(_pdfEvidence, 0);
+        _pdfTspAddress.Enabled = false;
+        _pdfTspAddress.Items.AddRange(TspServiceStore.Load().Cast<object>().ToArray());
+        AddLabeled("Адрес службы TSP", _pdfTspAddress);
+        _pdfFeatureStatus.ForeColor = PdfSigningService.EnhancedCadesAvailable
+            ? Color.FromArgb(23, 121, 78)
+            : Color.Firebrick;
+        _pdfFeatureStatus.Text = PdfSigningService.EnhancedCadesAvailable
+            ? "Компоненты CryptoPro CAdES обнаружены: доступны CAdES-T и CAdES-XLT1 при наличии действующей службы TSP/OCSP."
+            : "Компоненты CryptoPro CAdES не найдены. Базовая PDF-подпись доступна, TSP и XLT1 отключены.";
+        _pdfTimestamp.Enabled = PdfSigningService.EnhancedCadesAvailable;
+        _pdfEvidence.Enabled = PdfSigningService.EnhancedCadesAvailable;
+        AddControl(_pdfFeatureStatus, 4);
+        AddControl(Info("Выделите область штампа мышью на странице. Изображение штампа — только визуальное представление; юридическую силу обеспечивает встроенная криптографическая подпись PDF."), 8);
+        AddControl(_pdfSignButton, 8);
+
+        sideScroll.Controls.Add(side);
+        split.Panel2.Controls.Add(sideScroll);
+        root.Controls.Add(split, 0, 1);
+        page.Controls.Add(root);
         return page;
     }
 
@@ -188,6 +432,36 @@ internal sealed class MainForm : Form
         buttons.Controls.Add(_installCertificatesButton);
         layout.Controls.Add(buttons, 0, 3);
         layout.Controls.Add(Info("Установка выполняется только в «Сертификаты — текущий пользователь — Личное (CurrentUser\\My)» и не требует прав администратора."), 0, 4);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private TabPage BuildRemoveCertificateTab()
+    {
+        var page = NewPage("Удалить сертификаты");
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        layout.Controls.Add(Info("Здесь отображаются все сертификаты из личного хранилища текущего пользователя (CurrentUser\\My). Действующие показаны чёрным, истёкшие и ещё не вступившие в силу — красным."), 0, 0);
+        layout.Controls.Add(_removableCertificateStatus, 0, 1);
+
+        _removableCertificates.Columns.Add("Владелец / организация", 300);
+        _removableCertificates.Columns.Add("Статус", 135);
+        _removableCertificates.Columns.Add("Действителен с", 110);
+        _removableCertificates.Columns.Add("Действителен до", 110);
+        _removableCertificates.Columns.Add("Закрытый ключ", 110);
+        _removableCertificates.Columns.Add("Отпечаток SHA-1", 300);
+        layout.Controls.Add(_removableCertificates, 0, 2);
+
+        var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
+        buttons.Controls.Add(_refreshRemovableCertificatesButton);
+        buttons.Controls.Add(_removeCertificatesButton);
+        layout.Controls.Add(buttons, 0, 3);
+        layout.Controls.Add(Info("Удаляется только публичный сертификат из CurrentUser\\My. Контейнер закрытого ключа на токене или другом носителе не удаляется; при необходимости сертификат можно позднее добавить снова из контейнера CryptoPro."), 0, 4);
         page.Controls.Add(layout);
         return page;
     }
@@ -262,9 +536,37 @@ internal sealed class MainForm : Form
     {
         _scanContainersButton.Click += async (_, _) => await RefreshContainerCertificatesAsync();
         _installCertificatesButton.Click += async (_, _) => await InstallSelectedCertificatesAsync();
+        _refreshRemovableCertificatesButton.Click += (_, _) => RefreshRemovableCertificates();
+        _removeCertificatesButton.Click += async (_, _) => await RemoveSelectedCertificatesAsync();
         _mergeButton.Click += async (_, _) => await MergeAsync();
         _signButton.Click += async (_, _) => await SignAsync();
         _verifyButton.Click += async (_, _) => await VerifyAsync();
+        _pdfOpenButton.Click += async (_, _) => await OpenPdfAsync();
+        _pdfPreviousButton.Click += async (_, _) => await ChangePdfPageAsync(-1);
+        _pdfNextButton.Click += async (_, _) => await ChangePdfPageAsync(1);
+        _pdfZoomOutButton.Click += (_, _) => _pdfCanvas.SetZoom(_pdfCanvas.Zoom / 1.2F);
+        _pdfZoomInButton.Click += (_, _) => _pdfCanvas.SetZoom(_pdfCanvas.Zoom * 1.2F);
+        _pdfFitButton.Click += (_, _) => _pdfCanvas.FitToWindow();
+        _pdfSignButton.Click += async (_, _) => await SignPdfAsync();
+        _pdfCanvas.SelectionChanged += (_, _) => UpdatePdfSelectionLabel();
+        _pdfTimestamp.CheckedChanged += (_, _) =>
+        {
+            _pdfTspAddress.Enabled = _pdfTimestamp.Checked || _pdfEvidence.Checked;
+            if (!_pdfTimestamp.Checked && _pdfEvidence.Checked) _pdfEvidence.Checked = false;
+        };
+        _pdfEvidence.CheckedChanged += (_, _) =>
+        {
+            if (_pdfEvidence.Checked) _pdfTimestamp.Checked = true;
+            _pdfTspAddress.Enabled = _pdfTimestamp.Checked || _pdfEvidence.Checked;
+        };
+        _pdfVisualize63Fz.CheckedChanged += (_, _) =>
+        {
+            _pdfCanvas.Cursor = _pdfVisualize63Fz.Checked ? Cursors.Cross : Cursors.Default;
+            _pdfStampDesign.Enabled = _pdfVisualize63Fz.Checked;
+            UpdatePdfSelectionLabel();
+        };
+        _tabs.SelectedIndexChanged += (_, _) => UpdateWorkspaceMode();
+        FormClosed += (_, _) => _pdfViewer.Dispose();
         _signFileMode.CheckedChanged += (_, _) => _recursive.Enabled = _signFolderMode.Checked;
         _recursive.Enabled = false;
         _certificates.ItemCheck += (_, e) =>
@@ -277,6 +579,150 @@ internal sealed class MainForm : Form
                 BeginInvoke(() => MessageBox.Show(this, "Можно выбрать не более двух сертификатов.", "CryptoSigTool", MessageBoxButtons.OK, MessageBoxIcon.Information));
             }
         };
+    }
+
+    private async Task OpenPdfAsync()
+    {
+        using var dialog = new OpenFileDialog { Filter = "PDF (*.pdf)|*.pdf", CheckFileExists = true };
+        if (File.Exists(_pdfInput.Text)) dialog.FileName = _pdfInput.Text;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        await RunBusyAsync(async () =>
+        {
+            await _pdfViewer.OpenAsync(dialog.FileName);
+            if (_pdfViewer.PageCount == 0) throw new InvalidDataException("PDF не содержит страниц.");
+            _pdfInput.Text = dialog.FileName;
+            _pdfOutput.Text = GetAvailablePath(Path.Combine(
+                Path.GetDirectoryName(dialog.FileName)!,
+                Path.GetFileNameWithoutExtension(dialog.FileName) + ".signed.pdf"));
+            _pdfPageIndex = 0;
+            await RenderCurrentPdfPageAsync();
+            SetStatus($"PDF открыт: страниц {_pdfViewer.PageCount}", Color.FromArgb(23, 121, 78));
+            Log($"Открыт PDF для визуальной подписи: {dialog.FileName}");
+        });
+    }
+
+    private async Task ChangePdfPageAsync(int delta)
+    {
+        if (_pdfViewer.PageCount == 0) return;
+        var next = Math.Clamp((long)_pdfPageIndex + delta, 0, (long)_pdfViewer.PageCount - 1);
+        if ((uint)next == _pdfPageIndex) return;
+        _pdfPageIndex = (uint)next;
+        await RunBusyAsync(RenderCurrentPdfPageAsync);
+    }
+
+    private async Task RenderCurrentPdfPageAsync()
+    {
+        var image = await _pdfViewer.RenderPageAsync(_pdfPageIndex);
+        _pdfCanvas.SetPage(image);
+        _pdfPageLabel.Text = $"Страница {_pdfPageIndex + 1} / {_pdfViewer.PageCount}";
+        _pdfPreviousButton.Enabled = _pdfPageIndex > 0;
+        _pdfNextButton.Enabled = _pdfPageIndex + 1 < _pdfViewer.PageCount;
+        UpdatePdfSelectionLabel();
+    }
+
+    private void UpdatePdfSelectionLabel()
+    {
+        if (!_pdfVisualize63Fz.Checked)
+        {
+            _pdfSelectionLabel.Text = "Визуальный штамп отключён: будет создано невидимое поле PDF-подписи.";
+            return;
+        }
+
+        var selection = _pdfCanvas.SelectionNormalized;
+        _pdfSelectionLabel.Text = selection.IsEmpty
+            ? "Область штампа не выбрана. Проведите мышью по нужному месту страницы."
+            : $"Область: X {selection.X:P0}, Y {selection.Y:P0}, ширина {selection.Width:P0}, высота {selection.Height:P0}.";
+    }
+
+    private async Task SignPdfAsync()
+    {
+        if (_busy) return;
+        if (!File.Exists(_pdfInput.Text))
+        {
+            ShowError("Сначала откройте PDF-файл.");
+            return;
+        }
+        if (_pdfCertificates.SelectedItem is not CertificateItem certificate)
+        {
+            ShowError("Выберите сертификат для PDF-подписи.");
+            return;
+        }
+        if (_pdfVisualize63Fz.Checked && _pdfCanvas.SelectionNormalized.IsEmpty)
+        {
+            ShowError("Выделите мышью область для визуального штампа.");
+            return;
+        }
+        if ((_pdfTimestamp.Checked || _pdfEvidence.Checked) && !PdfSigningService.EnhancedCadesAvailable)
+        {
+            ShowError("Для CAdES-T/XLT1 не найдены компоненты CryptoPro CAdES/TSP/OCSP.");
+            return;
+        }
+
+        var output = _pdfOutput.Text.Trim();
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            output = GetAvailablePath(Path.Combine(
+                Path.GetDirectoryName(_pdfInput.Text)!,
+                Path.GetFileNameWithoutExtension(_pdfInput.Text) + ".signed.pdf"));
+            _pdfOutput.Text = output;
+        }
+
+        var request = new PdfSignatureRequest(
+            _pdfInput.Text,
+            output,
+            certificate,
+            _pdfAlgorithm.SelectedItem?.ToString() ?? "GOST12_256",
+            checked((int)_pdfPageIndex),
+            _pdfCanvas.SelectionNormalized,
+            new PdfStampSettings(
+                _pdfVisualize63Fz.Checked,
+                _pdfShowDate.Checked,
+                string.IsNullOrWhiteSpace(_pdfLogo.Text) ? null : _pdfLogo.Text.Trim(),
+                _pdfReason.Text.Trim(),
+                _pdfLocation.Text.Trim(),
+                DateTime.Now,
+                (_pdfStampDesign.SelectedItem as PdfStampDesignItem)?.Value ?? PdfStampDesign.AcrobatBlack),
+            _pdfTimestamp.Checked,
+            _pdfEvidence.Checked,
+            string.IsNullOrWhiteSpace(_pdfTspAddress.Text) ? null : _pdfTspAddress.Text.Trim());
+
+        await RunBusyAsync(async () =>
+        {
+            EnsureCryptoPro();
+            Log($"Формирование встроенной PDF-подписи: {request.InputPath}");
+            await _pdfSigning.SignAsync(request);
+            if (!File.Exists(output) || new FileInfo(output).Length == 0)
+                throw new InvalidDataException("Подписанный PDF не был создан.");
+            var verifications = await PdfSignatureVerifier.VerifyAllAsync(output, _cryptoPro);
+            if (request.AddTimestamp && request.TspAddress is not null)
+                TspServiceStore.Remember(request.TspAddress);
+            SetStatus("PDF успешно подписан", Color.FromArgb(23, 121, 78));
+            Log($"Создан и проверен подписанный PDF: {output}; встроенных подписей: {verifications.Count}; последняя digest: {verifications[^1].DigestAlgorithm}.");
+            MessageBox.Show(this,
+                $"Подписанный PDF сохранён:\r\n{output}\r\n\r\nПроверьте подпись в CryptoPro PDF или другом средстве, поддерживающем ГОСТ PDF-подписи.",
+                "CryptoSigTool", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        });
+    }
+
+    private void UpdateWorkspaceMode()
+    {
+        if (_rootLayout is null || _headerPanel is null || _pdfTab is null) return;
+        if (ReferenceEquals(_tabs.SelectedTab, _removeCertificateTab) && !_busy)
+            RefreshRemovableCertificates();
+        var pdfMode = ReferenceEquals(_tabs.SelectedTab, _pdfTab);
+        _headerPanel.Visible = !pdfMode;
+        _statusLabel.Visible = !pdfMode;
+        _log.Visible = !pdfMode;
+        _rootLayout.Padding = pdfMode ? new Padding(0) : new Padding(16);
+        _rootLayout.RowStyles[0].SizeType = pdfMode ? SizeType.Absolute : SizeType.AutoSize;
+        _rootLayout.RowStyles[0].Height = pdfMode ? 0 : 0;
+        _rootLayout.RowStyles[1].SizeType = SizeType.Percent;
+        _rootLayout.RowStyles[1].Height = pdfMode ? 100 : 65;
+        _rootLayout.RowStyles[2].SizeType = pdfMode ? SizeType.Absolute : SizeType.AutoSize;
+        _rootLayout.RowStyles[2].Height = pdfMode ? 0 : 0;
+        _rootLayout.RowStyles[3].SizeType = pdfMode ? SizeType.Absolute : SizeType.Percent;
+        _rootLayout.RowStyles[3].Height = pdfMode ? 0 : 35;
     }
 
     private async Task RefreshContainerCertificatesAsync()
@@ -358,6 +804,83 @@ internal sealed class MainForm : Form
         {
             _containerCertificates.EndUpdate();
         }
+    }
+
+    private void RefreshRemovableCertificates()
+    {
+        var certificates = _cryptoPro.GetCurrentUserPersonalCertificates();
+        _removableCertificates.BeginUpdate();
+        try
+        {
+            _removableCertificates.Items.Clear();
+            foreach (var certificate in certificates)
+            {
+                var item = new ListViewItem(certificate.DisplayName)
+                {
+                    Tag = certificate,
+                    ToolTipText = certificate.Subject,
+                    ForeColor = certificate.IsValidNow ? Color.Black : Color.Firebrick
+                };
+                item.SubItems.Add(certificate.Status);
+                item.SubItems.Add(certificate.NotBefore.ToString("dd.MM.yyyy"));
+                item.SubItems.Add(certificate.NotAfter.ToString("dd.MM.yyyy"));
+                item.SubItems.Add(certificate.HasPrivateKey ? "Доступен" : "Нет");
+                item.SubItems.Add(certificate.Thumbprint);
+                _removableCertificates.Items.Add(item);
+            }
+        }
+        finally
+        {
+            _removableCertificates.EndUpdate();
+        }
+
+        var valid = certificates.Count(certificate => certificate.IsValidNow);
+        var expired = certificates.Count(certificate => certificate.IsExpired);
+        var notYetValid = certificates.Count(certificate => certificate.IsNotYetValid);
+        _removableCertificateStatus.Text =
+            $"Всего: {certificates.Count}; действующих: {valid}; истёкших: {expired}; ещё не действуют: {notYetValid}.";
+    }
+
+    private async Task RemoveSelectedCertificatesAsync()
+    {
+        if (_busy) return;
+        var selected = _removableCertificates.CheckedItems
+            .Cast<ListViewItem>()
+            .Select(item => (UserPersonalCertificateItem)item.Tag!)
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            ShowError("Отметьте хотя бы один сертификат для удаления.");
+            return;
+        }
+
+        var preview = string.Join("\r\n", selected.Take(6).Select(certificate => $"• {certificate.DisplayName} — {certificate.Status}"));
+        if (selected.Length > 6) preview += $"\r\n• и ещё {selected.Length - 6}";
+        var answer = MessageBox.Show(this,
+            $"Вы уверены, что хотите удалить выбранные сертификаты ({selected.Length}) из личного хранилища текущего пользователя?\r\n\r\n{preview}\r\n\r\nЗакрытые ключи и контейнеры CryptoPro не удаляются.",
+            "Подтверждение удаления сертификатов",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+        if (answer != DialogResult.Yes) return;
+
+        await RunBusyAsync(() =>
+        {
+            var removed = 0;
+            foreach (var certificate in selected)
+            {
+                removed += _cryptoPro.RemoveCurrentUserPersonalCertificate(certificate.Thumbprint);
+                Log($"Удалён сертификат из CurrentUser\\My: {certificate.DisplayName}, {certificate.Thumbprint}");
+            }
+
+            RefreshCertificates();
+            RefreshRemovableCertificates();
+            SetStatus($"Удалено сертификатов: {removed}", Color.FromArgb(23, 121, 78));
+            MessageBox.Show(this,
+                $"Удалено сертификатов: {removed}.\r\n\r\nЗакрытые ключи и контейнеры CryptoPro не изменялись.",
+                "CryptoSigTool", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return Task.CompletedTask;
+        });
     }
 
     private async Task MergeAsync()
@@ -603,9 +1126,20 @@ internal sealed class MainForm : Form
 
     private void RefreshCertificates()
     {
+        var selectedPdfThumbprint = (_pdfCertificates.SelectedItem as CertificateItem)?.Thumbprint;
         _certificates.Items.Clear();
+        _pdfCertificates.Items.Clear();
         var certificates = _cryptoPro.GetCertificates();
-        foreach (var cert in certificates) _certificates.Items.Add(cert);
+        foreach (var cert in certificates)
+        {
+            _certificates.Items.Add(cert);
+            _pdfCertificates.Items.Add(cert);
+        }
+        if (_pdfCertificates.Items.Count > 0)
+        {
+            var selectedIndex = certificates.FindIndex(x => string.Equals(x.Thumbprint, selectedPdfThumbprint, StringComparison.OrdinalIgnoreCase));
+            _pdfCertificates.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
         Log($"Найдено сертификатов в хранилищах Windows: {certificates.Count}; с закрытым ключом: {certificates.Count(x => x.HasPrivateKey)}.");
     }
 
@@ -660,9 +1194,18 @@ internal sealed class MainForm : Form
     {
         _scanContainersButton.Enabled = enabled;
         _installCertificatesButton.Enabled = enabled;
+        _refreshRemovableCertificatesButton.Enabled = enabled;
+        _removeCertificatesButton.Enabled = enabled;
         _mergeButton.Enabled = enabled;
         _signButton.Enabled = enabled;
         _verifyButton.Enabled = enabled;
+        _pdfOpenButton.Enabled = enabled;
+        _pdfSignButton.Enabled = enabled;
+        _pdfZoomInButton.Enabled = enabled;
+        _pdfZoomOutButton.Enabled = enabled;
+        _pdfFitButton.Enabled = enabled;
+        _pdfPreviousButton.Enabled = enabled && _pdfViewer.PageCount > 0 && _pdfPageIndex > 0;
+        _pdfNextButton.Enabled = enabled && _pdfViewer.PageCount > 0 && _pdfPageIndex + 1 < _pdfViewer.PageCount;
     }
 
     private void Log(string text)
@@ -737,6 +1280,18 @@ internal sealed class MainForm : Form
         AutoSize = true,
         FlatStyle = FlatStyle.System,
         Margin = new Padding(3, 3, 3, 3)
+    };
+
+    private static Button DangerButton(string text) => new()
+    {
+        Text = text,
+        AutoSize = true,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = Color.Firebrick,
+        ForeColor = Color.White,
+        Padding = new Padding(12, 5, 12, 5),
+        Margin = new Padding(3, 3, 3, 3),
+        Cursor = Cursors.Hand
     };
 
     private const string SignatureFilter = "Подписи (*.sig;*.p7s)|*.sig;*.p7s|Все файлы|*.*";
