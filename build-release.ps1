@@ -57,6 +57,7 @@ Copy-Item -LiteralPath (Join-Path $appOutput 'CryptoSigTool.exe') -Destination $
 Copy-Item -LiteralPath (Join-Path $repoRoot 'CryptoSigTool\INSTRUCTIONS-RU.txt') -Destination $bundle
 Copy-Item -LiteralPath (Join-Path $repoRoot 'DISCLAIMER-RU.txt') -Destination $bundle
 Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination $bundle
+Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination $bundle
 Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Destination $bundle
 
 & $InnoCompiler "/DMyAppVersion=$Version" (Join-Path $repoRoot 'CryptoSigTool.Installer\CryptoSigTool.iss')
@@ -68,6 +69,7 @@ Copy-Item -LiteralPath (Join-Path $appOutput 'CryptoSigTool.exe') -Destination $
 Copy-Item -LiteralPath (Join-Path $repoRoot 'CryptoSigTool\INSTRUCTIONS-RU.txt') -Destination $portableDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot 'DISCLAIMER-RU.txt') -Destination $portableDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination $portableDirectory
+Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination $portableDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Destination $portableDirectory
 
 $zipPath = Join-Path $dist "CryptoSigTool-$Version-win-x64.zip"
@@ -90,6 +92,7 @@ if (-not (Test-Path -LiteralPath $releaseNotes -PathType Leaf)) { throw "Release
 Copy-Item -LiteralPath $releaseNotes -Destination $releaseBundleDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\INSTALLATION.md') -Destination $releaseBundleDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot 'DISCLAIMER-RU.txt') -Destination $releaseBundleDirectory
+Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination $releaseBundleDirectory
 $releaseBundlePath = Join-Path $dist "CryptoSigTool-$Version-Release.zip"
 Compress-Archive -Path (Join-Path $releaseBundleDirectory '*') -DestinationPath $releaseBundlePath -CompressionLevel Optimal
 

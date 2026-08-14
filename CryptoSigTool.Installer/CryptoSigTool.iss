@@ -35,6 +35,7 @@ VersionInfoDescription={#MyAppName} Installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 InfoBeforeFile=..\DISCLAIMER-RU.txt
+LicenseFile=..\LICENSE
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -47,6 +48,7 @@ Source: "Bundle\CryptoSigTool.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Bundle\INSTRUCTIONS-RU.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Bundle\DISCLAIMER-RU.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Bundle\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Bundle\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Bundle\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
