@@ -12,3 +12,6 @@ CryptoSigTool.Installer/Bundle/*
 *.exe
 *.sig
 *.p7s
+tools/Inno Setup 6/
+tools/innosetup-*.exe
+tools/inno-install.log

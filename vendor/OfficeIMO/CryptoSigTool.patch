@@ -1,0 +1,14 @@
+--- a/OfficeIMO.Pdf/Manipulation/PdfIncrementalUpdater.cs
++++ b/OfficeIMO.Pdf/Manipulation/PdfIncrementalUpdater.cs
+@@
+         bool canPrepareSignature =
+             signaturePreparationBlockers.Count == 0 &&
+-            !hasSignatureContent &&
++            !blockedBySignatureFieldLock &&
+             !security.HasDocMDPPermissions;
+@@
+-        var blockers = metadataBlockers
+-            .Concat(formBlockers)
++        var blockers = commonBlockers
+             .Distinct(StringComparer.Ordinal)
+             .ToArray();

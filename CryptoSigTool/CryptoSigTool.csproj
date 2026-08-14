@@ -1,15 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>CryptoSigTool</AssemblyName>
     <RootNamespace>CryptoSigTool</RootNamespace>
-    <Version>1.4.0</Version>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
-    <FileVersion>1.4.0.0</FileVersion>
+    <Version>1.8.0</Version>
+    <AssemblyVersion>1.8.0.0</AssemblyVersion>
+    <FileVersion>1.8.0.0</FileVersion>
     <Product>CryptoSigTool</Product>
     <Company>ydadev</Company>
     <Authors>ydadev</Authors>
@@ -18,7 +18,17 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="OfficeIMO.Core">
+      <HintPath>..\vendor\OfficeIMO\OfficeIMO.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="OfficeIMO.Pdf">
+      <HintPath>..\vendor\OfficeIMO\OfficeIMO.Pdf.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <PackageReference Include="PDFsharp-GDI" Version="6.2.4" />
     <None Update="INSTRUCTIONS-RU.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Remove="Assets\CryptoSigTool.ico" />
     <EmbeddedResource Include="Assets\CryptoSigTool.ico" LogicalName="CryptoSigTool.AppIcon.ico" />
   </ItemGroup>

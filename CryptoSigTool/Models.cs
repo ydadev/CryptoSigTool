@@ -33,6 +33,21 @@ internal sealed record ContainerCertificateItem(
     public string KeyTypeDisplay => KeyType == "signature" ? "Ключ подписи" : "Ключ обмена";
 }
 
+internal sealed record UserPersonalCertificateItem(
+    string DisplayName,
+    string Thumbprint,
+    DateTime NotBefore,
+    DateTime NotAfter,
+    string Subject,
+    string Issuer,
+    bool HasPrivateKey)
+{
+    public bool IsExpired => NotAfter < DateTime.Now;
+    public bool IsNotYetValid => NotBefore > DateTime.Now;
+    public bool IsValidNow => !IsExpired && !IsNotYetValid;
+    public string Status => IsExpired ? "Истекла" : IsNotYetValid ? "Ещё не действует" : "Действующая";
+}
+
 internal sealed record SignatureInspection(
     bool Detached,
     string ContentType,
