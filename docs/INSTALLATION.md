@@ -3,11 +3,11 @@
 ## Установка
 
 1. Убедитесь, что установлен CryptoPro CSP 5.
-2. Скачайте `CryptoSigTool-Setup-1.8.0.exe` и `SHA256SUMS.txt` из одного релиза.
+2. Скачайте `CryptoSigTool-Setup-1.8.2.exe` и `SHA256SUMS.txt` из одного релиза.
 3. При необходимости проверьте контрольную сумму:
 
    ```powershell
-   Get-FileHash .\CryptoSigTool-Setup-1.8.0.exe -Algorithm SHA256
+   Get-FileHash .\CryptoSigTool-Setup-1.8.2.exe -Algorithm SHA256
    ```
 
 4. Запустите установщик.
@@ -29,4 +29,4 @@
 
 ## Переносная версия
 
-Распакуйте `CryptoSigTool-1.8.0-win-x64.zip` и запустите `CryptoSigTool.exe`. Переносная версия не регистрируется в Windows и удаляется удалением распакованной папки.
+Распакуйте `CryptoSigTool-1.8.2-win-x64.zip` и запустите `CryptoSigTool.exe`. Переносная версия не регистрируется в Windows и удаляется удалением распакованной папки.

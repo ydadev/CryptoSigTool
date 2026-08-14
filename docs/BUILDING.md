@@ -25,7 +25,7 @@ dotnet build .\CryptoSigTool\CryptoSigTool.csproj -c Debug
 ## Релиз
 
 ```powershell
-.\build-release.ps1 -Version 1.8.0
+.\build-release.ps1 -Version 1.8.2
 ```
 
 Для сборки релиза требуется Inno Setup 6. Сценарий публикует приложение как self-contained `win-x64`, упаковывает его нативным установщиком Inno Setup и создаёт ZIP и `SHA256SUMS.txt`. Отдельно устанавливать .NET на целевом компьютере не требуется. Каталоги `artifacts/` и `dist/` являются результатом сборки и не коммитятся.

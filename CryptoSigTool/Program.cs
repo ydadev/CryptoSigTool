@@ -168,6 +168,23 @@ internal static class Program
             }
         }
 
+        if (args.Length == 3 && args[0].Equals("--pdf-remove-signatures-smoke", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var before = PdfSignatureRemovalService.Inspect(args[1]);
+                var result = PdfSignatureRemovalService.RemoveAll(args[1], args[2]);
+                var after = PdfSignatureRemovalService.Inspect(args[2]);
+                Console.WriteLine($"OK removed={result.RemovedSignatures} before={before.Signatures.Count} after={after.Signatures.Count} pages={result.PageCount} bytes={result.OutputBytes}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex);
+                return 1;
+            }
+        }
+
         if (args.Length == 1 && args[0].Equals("--ui-smoke", StringComparison.OrdinalIgnoreCase))
         {
             ApplicationConfiguration.Initialize();
