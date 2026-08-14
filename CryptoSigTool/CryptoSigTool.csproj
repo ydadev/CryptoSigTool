@@ -13,6 +13,8 @@
     <Product>CryptoSigTool</Product>
     <Company>ydadev</Company>
     <Authors>ydadev</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/ydadev/CryptoSigTool</RepositoryUrl>
     <Description>Работа с электронными подписями CMS/PKCS#7 через CryptoPro CSP</Description>
     <ApplicationIcon>Assets\CryptoSigTool.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
